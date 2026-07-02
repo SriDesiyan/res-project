@@ -1,0 +1,8 @@
+path: ./yolo_dataset
+train: train/images
+val: val/images
+
+# Classes
+names:
+  0: customer
+  1: waiter

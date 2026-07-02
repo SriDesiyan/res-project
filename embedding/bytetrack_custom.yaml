@@ -1,0 +1,10 @@
+# Custom ByteTrack config for Layer 1 of the Three-Model Hybrid Architecture
+# Two-round matching: high-conf IoU first, then low-conf recovery
+
+tracker_type: bytetrack
+track_high_thresh: 0.6       # Round 1: only high-confidence detections
+track_low_thresh: 0.2        # Round 2: recover with low-confidence detections
+new_track_thresh: 0.6        # Higher = fewer false new tracks
+track_buffer: 60             # Keep lost tracks alive for 60 frames (~2 sec)
+match_thresh: 0.8            # IoU threshold for association
+fuse_score: True

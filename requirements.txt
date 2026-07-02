@@ -1,0 +1,16 @@
+# Core Python
+torch
+torchvision
+
+# Object Detection & Tracking
+ultralytics
+
+# Image Processing
+opencv-python
+Pillow
+
+# Data Processing
+numpy
+
+# Auto-ROI (dwell-point clustering)
+scikit-learn

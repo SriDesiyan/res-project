@@ -1,0 +1,69 @@
+# Python cache and bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs, temporary, and backup files
+*.log
+*.tmp
+*.bak
+*.cache
+*.sqlite-journal
+*.db-wal
+*.db-shm
+
+# Databases (local operational state)
+*.db
+*.sqlite
+
+# Large videos and media
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# Large model weights (avoid repository bloat)
+*.pt
+*.pth
+yolov8n.pt
+yolov8s.pt
+embedding/osnet_x1_0_msmt17.pth
+
+# Model training and checkpoint directories
+training_output/
+train-new/
+inference_output/
+analytics_output/
+
+# Unlabeled data and samples
+unlabeled/
+unlabeled-2/
+labelled/
+similarity-output/
+similarity-output2/
+waiter-sample/
+server-sample/
+bow-server-sample/

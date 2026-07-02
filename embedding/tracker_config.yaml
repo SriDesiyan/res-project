@@ -1,0 +1,19 @@
+# Custom BoT-SORT config with ReID enabled for stable waiter tracking
+# Based on ultralytics botsort.yaml defaults with key tweaks
+
+tracker_type: botsort
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 90          # Keep lost tracks alive for 90 frames (~3 sec) instead of 30
+match_thresh: 0.8
+fuse_score: True
+
+# BoT-SORT specifics
+gmc_method: none
+
+# ReID - ENABLED for appearance-based matching (DeepSORT-like behavior)
+proximity_thresh: 0.5
+appearance_thresh: 0.25    # Lower = more willing to re-associate by appearance
+with_reid: True            # Use appearance features to maintain track identity
+model: auto
