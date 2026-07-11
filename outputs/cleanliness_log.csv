@@ -1,0 +1,6 @@
+table_id,state,start_time,end_time,duration_seconds
+table_2,OCCUPIED,10.0,52.0,42.0
+table_2,CUSTOMER_LEFT,52.0,54.0,2.0
+table_2,DIRTY,54.0,64.0,10.0
+table_2,CLEAN,64.0,70.0,6.0
+table_2,EMPTY,70.0,,

@@ -1,0 +1,43 @@
+==========================================================
+RESTAURANT CCTV ANALYTICS PIPELINE - FINAL REPORT
+==========================================================
+Target Video: Hotet_Test_1.mp4
+Run Status: PASS
+
+----------------------------------------------------------
+GPU / Hardware Information
+----------------------------------------------------------
+Device Used: CUDA (GPU Accelerated)
+GPU Name: NVIDIA GeForce RTX 2050
+Torch Version: 2.6.0+cu124
+
+----------------------------------------------------------
+Execution Summary (Standard Run)
+----------------------------------------------------------
+Total Frames Processed     : 53 (Every 5th frame)
+Total Processing Time      : 19.60 seconds
+Average FPS                : 2.70
+Average GPU Usage          : 20.8%
+Average Inference Time     : 31.85 ms
+Average Tracking Time      : 99.61 ms
+
+----------------------------------------------------------
+Restaurant Operational Metrics
+----------------------------------------------------------
+Number of Customers        : 0
+Number of Waiters          : 0
+Occupancy Events Logged    : 234
+Order Confirmed Events     : 0
+Food Served Events         : 0
+Customer Left Events       : 0
+Dirty Table Cycles         : 1
+Clean Table Cycles         : 1
+
+----------------------------------------------------------
+Verification Checks
+----------------------------------------------------------
+[OK] Standard Video Exists    : outputs/Hotet_Test_1_output.mp4 (True)
+[OK] Debug Video Exists       : outputs/Hotet_Test_1_debug.mp4 (True)
+[OK] Report File Exists       : outputs/Hotet_Test_1_report.txt (True)
+[OK] CSV Metrics File Exists   : outputs/Hotet_Test_1_metrics.csv (True)
+[OK] Database Records Created : Yes

@@ -1,0 +1,17 @@
+{
+    "total_customers": 0,
+    "total_waiters": 2,
+    "occupied_tables_count": 0,
+    "average_occupancy_duration_seconds": 0.0,
+    "order_taking_events_count": 0,
+    "food_serving_events_count": 0,
+    "average_waiter_response_time_seconds": 0.0,
+    "average_dirty_table_duration_seconds": 10.0,
+    "dirty_table_durations_by_table": {
+        "table_2": 10.0
+    },
+    "average_cleaning_duration_seconds": 0.0,
+    "peak_occupancy_periods": [
+        "None (0 customers)"
+    ]
+}
