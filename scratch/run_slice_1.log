@@ -1,0 +1,86 @@
+
+========================================
+        DETECTED HARDWARE INFO
+========================================
+OS Platform     : win32
+Python Version  : 3.13.5
+PyTorch Version : 2.6.0+cu124
+CUDA Available  : True
+CUDA Device Name: NVIDIA GeForce RTX 2050
+CUDA Dev Count  : 1
+MPS Available   : False
+Active Device   : cuda
+========================================
+
+Device: cuda
+[TABLE-MGR] Loaded 9 table(s) from C:\Users\desiy\Downloads\coe-intern-main (1)\coe-intern-main\analytics\config\tables.json
+Active table ROIs: ['table_1', 'table_2', 'table_3', 'table_4', 'table_5', 'table_6', 'table_7', 'table_8', 'table_9']
+Initializing modules...
+[PersonTracker] Loaded OSNet Re-ID weights from C:\Users\desiy\Downloads\coe-intern-main (1)\coe-intern-main\embedding\osnet_x1_0_msmt17.pth
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+W0000 00:00:1783889482.080176   26400 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783889482.091027   32340 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783889482.177003   32408 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783889482.201233   13528 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+Processing frames 9800–9949 (393s – 399s)
+
+============================================================
+Starting Analytics Pipeline
+============================================================
+
+[SessionManager] Session S1 marked dormant
+Frame 9850 | Persons: 0 | Customers: 0 | Waiters: 0 | FPS: 25.7
+Frame 9900 | Persons: 0 | Customers: 0 | Waiters: 0 | FPS: 41.9
+[FSM INIT] Table table_1 warm-up complete -> EMPTY
+[FSM INIT] Table table_2 warm-up complete -> EMPTY
+[FSM INIT] Table table_3 warm-up complete -> EMPTY
+[FSM INIT] Table table_4 warm-up complete -> EMPTY
+[FSM INIT] Table table_5 warm-up complete -> EMPTY
+[FSM INIT] Table table_6 warm-up complete -> EMPTY
+[FSM INIT] Table table_7 warm-up complete -> EMPTY
+[FSM INIT] Table table_8 warm-up complete -> EMPTY
+[FSM INIT] Table table_9 warm-up complete -> EMPTY
+
+============================================================
+Pipeline Complete!
+============================================================
+Output video: C:\Users\desiy\Downloads\coe-intern-main (1)\coe-intern-main\output_slice_1.mp4
+
+============================================================
+Table Summary
+============================================================
+  table_1: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_2: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_3: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_4: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_5: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_6: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_7: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_8: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_9: {'state': 'EMPTY', 'previous_state': None, 'state_start_time': 397.999337572867, 'warm_up_complete': True, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+
+============================================================
+Exporting Database Logs to CSV
+============================================================
+✓ Exported occupancy_log.csv successfully.
+✓ Exported waiter_metrics.csv successfully.
+✓ Exported serving_events.csv successfully.
+✓ Exported cleanliness_log.csv successfully.
+
+============================================================
+Compiling Summary JSON Report
+============================================================
+✓ Generated summary.json successfully.
+
+============================================================
+PERFORMANCE PROFILING REPORT
+============================================================
+Processed Frames           : 149
+Total Processing Time      : 15.22 seconds
+Average FPS                : 9.79
+Average CPU Utilization    : 39.8%
+Average GPU Utilization    : 23.0%
+Average Inference Latency  : 12.69 ms
+Average Tracking Latency   : 52.85 ms
+============================================================
+

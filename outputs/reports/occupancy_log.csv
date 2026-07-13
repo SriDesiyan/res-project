@@ -1,0 +1,1 @@
+frame,timestamp_sec,table_id,customer_count,waiter_present,is_occupied,total_visits,peak_occupancy,waiter_visits,idle_seconds

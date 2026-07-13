@@ -486,6 +486,19 @@ def main():
                 if person.session_id:
                     sid = person.session_id
                     sess_role = session_manager.active_sessions[sid]["role"]
+                    
+                    is_established_customer = (
+                        sess_role == "customer"
+                        and session_manager.active_sessions[sid].get("last_table") is not None
+                        and (frame_time - session_manager.active_sessions[sid]["start_time"] > 5.0)
+                    )
+                    
+                    if is_established_customer:
+                        person.role = "customer"
+                        tracker.locked_waiters.discard(person.track_id)
+                        tracker.waiter_hits[person.track_id] = 0
+                        continue
+                        
                     tracker_locked_waiter = person.track_id in tracker.locked_waiters
                     current_hits = tracker.waiter_hits.get(person.track_id, 0)
                     if tracker_locked_waiter:

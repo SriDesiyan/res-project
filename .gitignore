@@ -10,7 +10,7 @@ __pycache__/
 dist/
 build/
 
-# Virtual environments
+# Virtual environments (Not pushed to git as they are system-specific)
 .venv/
 venv/
 ENV/
@@ -25,8 +25,7 @@ env/
 .DS_Store
 Thumbs.db
 
-# Logs, temporary, and backup files
-*.log
+# Temporary and backup files (excluding logs)
 *.tmp
 *.bak
 *.cache
@@ -34,40 +33,5 @@ Thumbs.db
 *.db-wal
 *.db-shm
 
-# Databases (local operational state)
-*.db
-*.sqlite
+# Databases, videos, logs, and weights are unignored so they can be added to git
 
-# Large videos and media
-*.mp4
-*.avi
-*.mov
-*.mkv
-*.webm
-!test\ videos/
-!test\ videos/*.mp4
-test\ videos/table_wghotel_test_3.mp4
-test\ videos/example test 2.mp4
-
-# Large model weights (yolov8n.pt and osnet are explicitly tracked)
-*.pt
-*.pth
-!yolov8n.pt
-!embedding/osnet_x1_0_msmt17.pth
-yolov8s.pt
-
-# Model training and checkpoint directories
-training_output/
-train-new/
-inference_output/
-analytics_output/
-
-# Unlabeled data and samples
-unlabeled/
-unlabeled-2/
-labelled/
-similarity-output/
-similarity-output2/
-waiter-sample/
-server-sample/
-bow-server-sample/

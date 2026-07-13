@@ -47,9 +47,9 @@ class Renderer:
     def draw_table_polygons(self, frame, fsm_states: dict, occupancy_data: list,
                             frame_time: float, food_served_debug_info: dict = None, debug: bool = False):
         """Draw table ROI polygons and production HUD card."""
-        overlay = frame.copy()
-
         occ_lookup = {occ["table_id"]: occ for occ in occupancy_data}
+
+        fh, fw = frame.shape[:2]
 
         for table_id, table_info in self.tables.items():
             poly = np.array(table_info["polygon"], dtype=np.int32)
@@ -70,8 +70,19 @@ class Renderer:
             state = fsm_info.get("state", "UNKNOWN")
             color = FSM_STATE_COLORS.get(state, (128, 128, 128))
 
-            # Filled polygon (transparent) + outline
-            cv2.fillPoly(overlay, [poly], color)
+            # Filled polygon (transparent) - crop and blend locally
+            x, y, w, h = cv2.boundingRect(poly)
+            x1, y1 = max(0, x), max(0, y)
+            x2, y2 = min(fw, x + w), min(fh, y + h)
+
+            if x2 > x1 and y2 > y1:
+                sub_frame = frame[y1:y2, x1:x2]
+                sub_overlay = sub_frame.copy()
+                poly_rel = poly - [x1, y1]
+                cv2.fillPoly(sub_overlay, [poly_rel], color)
+                cv2.addWeighted(sub_overlay, 0.25, sub_frame, 0.75, 0, sub_frame)
+
+            # Outline drawn on full frame
             cv2.polylines(frame, [poly], isClosed=True, color=color, thickness=2)
 
             cx, cy = int(table_info["center"][0]), int(table_info["center"][1])
@@ -219,8 +230,6 @@ class Renderer:
                                 (fs_box_x + 12, fs_box_y + 23),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
 
-        # Blend transparent polygon fill
-        cv2.addWeighted(overlay, 0.25, frame, 0.75, 0, frame)
         return frame
 
     def draw_persons(self, frame, persons, frame_time: float, debug: bool = False):

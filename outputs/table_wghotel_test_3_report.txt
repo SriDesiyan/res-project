@@ -1,0 +1,31 @@
+==========================================================
+RESTAURANT CCTV ANALYTICS PIPELINE - RUN REPORT
+==========================================================
+Target Video: table_wghotel_test_3.mp4
+Execution Date: 2026-07-02
+Run Status: FAILED (GPU Unavailable)
+
+----------------------------------------------------------
+GPU / Hardware Information
+----------------------------------------------------------
+Intel(R) UHD Graphics: Detected (Active, Display)
+NVIDIA GeForce RTX 2050: Detected as "Phantom" (PnP error code: CM_PROB_PHANTOM)
+ConfigManagerErrorCode: CM_PROB_PHANTOM (Code 45)
+Explanation: The hardware device is currently not physically connected or is in a deep sleep state (powered off by system power management/BIOS to conserve battery).
+CUDA Available: False
+Torch Version: 2.6.0+cu124
+
+----------------------------------------------------------
+Pre-Run Verification Checks
+----------------------------------------------------------
+YOLOv8 weights (yolov8n.pt): EXISTS & LOADS SUCCESSFULLY
+OSNet weights (embedding/osnet_x1_0_msmt17.pth): EXISTS & LOADS SUCCESSFULLY
+MediaPipe Pose Task: EXISTS & READABLE
+MediaPipe Hand Task: EXISTS & READABLE
+Database connection: INITIALIZES SUCCESSFULLY
+Table Polygons config (tables.json): LOADS SUCCESSFULLY (1 tables)
+
+----------------------------------------------------------
+Conclusion
+----------------------------------------------------------
+Execution was halted because GPU acceleration was explicitly requested, but no CUDA-enabled GPU is currently active/connected on this host system.

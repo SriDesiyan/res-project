@@ -10,8 +10,8 @@ import numpy as np
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent.resolve()
-video_path = project_root / "test video 1.mp4"
-artifacts_dir = Path("C:/Users/desiy/.gemini/antigravity-ide/brain/87afb1cc-1443-4a97-8304-ccc25755366a")
+video_path = project_root / "example test 2.mp4"
+artifacts_dir = Path("C:/Users/desiy/.gemini/antigravity-ide/brain/6f47135a-4c16-46f4-984f-3782a5da5654")
 artifacts_dir.mkdir(parents=True, exist_ok=True)
 
 # 1. Reset Databases and CSV logs

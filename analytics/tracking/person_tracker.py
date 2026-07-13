@@ -323,19 +323,18 @@ class PersonTracker:
                 # This saves CPU and prevents flicker on confirmed waiters.
                 if track_id in self.locked_waiters:
                     tp.role = "waiter"
-                    self.waiter_non_match_streak[track_id] = 0  # reset streak
                     # Periodic check (every 60 frames) to allow unlock on sustained mismatch
                     if tp.frame_count % 60 == 0:
                         _, _, is_match = self._get_embedding_and_classify(frame, x1, y1, x2, y2)
                         if not is_match:
-                            self.waiter_non_match_streak[track_id] = (
-                                self.waiter_non_match_streak[track_id] + 1
-                            )
+                            self.waiter_non_match_streak[track_id] += 1
                             if self.waiter_non_match_streak[track_id] >= self.WAITER_UNLOCK_STREAK:
                                 self.locked_waiters.discard(track_id)
                                 tp.role = "customer"
                                 self.waiter_non_match_streak[track_id] = 0
                                 print(f"[Tracker] Unlocked waiter track {track_id} after streak")
+                        else:
+                            self.waiter_non_match_streak[track_id] = 0
                 else:
                     # Not yet locked — run classifier (first 30 frames every frame,
                     # then every 15 frames for speed).

@@ -1,0 +1,74 @@
+
+========================================
+        DETECTED HARDWARE INFO
+========================================
+OS Platform     : win32
+Python Version  : 3.13.5
+PyTorch Version : 2.6.0+cu124
+CUDA Available  : True
+CUDA Device Name: NVIDIA GeForce RTX 2050
+CUDA Dev Count  : 1
+MPS Available   : False
+Active Device   : cuda
+========================================
+
+Device: cuda
+[TABLE-MGR] Loaded 9 table(s) from C:\Users\desiy\Downloads\coe-intern-main (1)\coe-intern-main\analytics\config\tables.json
+Active table ROIs: ['table_1', 'table_2', 'table_3', 'table_4', 'table_5', 'table_6', 'table_7', 'table_8', 'table_9']
+Initializing modules...
+[PersonTracker] Loaded OSNet Re-ID weights from C:\Users\desiy\Downloads\coe-intern-main (1)\coe-intern-main\embedding\osnet_x1_0_msmt17.pth
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+W0000 00:00:1783889650.033539   29260 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783889650.041271   29864 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783889650.118560    4452 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783889650.135147   19812 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+Processing frames 71943–72941 (2885s – 2925s)
+
+============================================================
+Starting Analytics Pipeline
+============================================================
+
+
+============================================================
+Pipeline Complete!
+============================================================
+Output video: C:\Users\desiy\Downloads\coe-intern-main (1)\coe-intern-main\output_slice_7.mp4
+
+============================================================
+Table Summary
+============================================================
+  table_1: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_2: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_3: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_4: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_5: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_6: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_7: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_8: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+  table_9: {'state': 'UNKNOWN', 'previous_state': None, 'state_start_time': 0.0, 'warm_up_complete': False, 'customer_time_start': None, 'customer_time_stop': None, 'waiting_time_start': None, 'waiting_time_stop': None, 'dining_time_start': None, 'dining_time_stop': None, 'occupancy_start_time': None, 'order_confirmed_time': None, 'food_wait_start_time': None, 'food_served_time': None, 'customer_left_time': None, 'dirty_start_time': None, 'clean_time': None, 'session_uuid': None, 'food_served_fired': False} | Visits: 0 | Peak: 0 | Waiter visits: 0
+
+============================================================
+Exporting Database Logs to CSV
+============================================================
+✓ Exported occupancy_log.csv successfully.
+✓ Exported waiter_metrics.csv successfully.
+✓ Exported serving_events.csv successfully.
+✓ Exported cleanliness_log.csv successfully.
+
+============================================================
+Compiling Summary JSON Report
+============================================================
+✓ Generated summary.json successfully.
+
+============================================================
+PERFORMANCE PROFILING REPORT
+============================================================
+Processed Frames           : 0
+Total Processing Time      : 0.03 seconds
+Average FPS                : 0.00
+Average CPU Utilization    : 0.0%
+Average GPU Utilization    : 0.0%
+Average Inference Latency  : 0.00 ms
+Average Tracking Latency   : 0.00 ms
+============================================================
+
