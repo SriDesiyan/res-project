@@ -1,0 +1,10 @@
+{
+  "total_unique_customers": 2,
+  "occupied_tables_count": 1,
+  "avg_session_duration_sec": 20.0,
+  "dirty_transitions": 0,
+  "clean_transitions": 0,
+  "waiter_service_log_count": 1,
+  "serving_events": 0,
+  "order_taken_events": 0
+}

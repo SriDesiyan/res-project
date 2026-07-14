@@ -2,10 +2,19 @@
 Restaurant CCTV Analytics Pipeline — Main Orchestrator.
 
 Wires together all modules:
-    Video → PersonTracker → ROI Assignment → OccupancyEngine
-                                           → CleanlinessEngine
+    Video → InferenceEngine → PersonTracker → ROI Assignment → OccupancyEngine
+                                               → CleanlinessEngine
           → Renderer → Output Video
 
+MIGRATION NOTE (Edge AI):
+    torch and mediapipe are no longer imported at the top level.
+    All hardware-specific code lives in analytics/inference/.
+    Use --backend to select the inference backend at runtime:
+        auto     — detect hardware, pick best (default)
+        cuda     — NVIDIA CUDA (original behaviour)
+        cpu      — PyTorch CPU
+        onnx     — ONNX Runtime
+        axelera  — Axelera Metis AIPU via Voyager SDK
 """
 import sys
 import argparse
@@ -21,7 +30,6 @@ import gc
 
 import cv2
 import numpy as np
-import torch
 
 project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
@@ -35,13 +43,12 @@ from occupancy.occupancy_engine import OccupancyEngine
 from cleanliness.plate_detector import PlateDetector
 from fsm.table_fsm import TableFSMManager
 from config.fsm_config import FSM_CONFIG
+from config.edge_config import EDGE_CONFIG
 from visualization.renderer import Renderer
 from database.database_manager import DatabaseManager
 from database.serving_event_logger import ServingEventLogger
-from tracking.serving_detector import detect_waiter_serving, HAND_MODEL_PATH, POSE_MODEL_PATH
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
+from tracking.serving_detector import detect_waiter_serving, detect_food_in_frame, HAND_MODEL_PATH, POSE_MODEL_PATH
+from inference.engine_factory import create_engine
 
 
 def init_waiter_db():
@@ -75,31 +82,21 @@ def log_waiter_visit_to_separate_db(waiter_id, table_id, timestamp):
     conn.close()
 
 
-def get_device():
+def get_device(engine):
+    """
+    Print hardware detection summary using the active inference engine.
+    Returns a string describing the active backend.
+    """
     print("\n" + "="*40)
     print("        DETECTED HARDWARE INFO")
     print("="*40)
     print(f"OS Platform     : {sys.platform}")
     print(f"Python Version  : {sys.version.split()[0]}")
-    print(f"PyTorch Version : {torch.__version__}")
-    
-    cuda_avail = torch.cuda.is_available()
-    mps_avail = torch.backends.mps.is_available()
-    print(f"CUDA Available  : {cuda_avail}")
-    if cuda_avail:
-        print(f"CUDA Device Name: {torch.cuda.get_device_name(0)}")
-        print(f"CUDA Dev Count  : {torch.cuda.device_count()}")
-    print(f"MPS Available   : {mps_avail}")
-    
-    device = torch.device("cpu")
-    if cuda_avail:
-        device = torch.device("cuda")
-    elif mps_avail:
-        device = torch.device("mps")
-        
-    print(f"Active Device   : {device}")
+    print(f"Backend         : {engine.backend_name}")
+    print(f"CUDA Available  : {engine.is_cuda_available()}")
+    print(f"Axelera AIPU    : {engine.is_axelera_available()}")
     print("="*40 + "\n")
-    return device
+    return engine.backend_name
 
 
 def parse_args():
@@ -135,13 +132,33 @@ def parse_args():
                         help="Grace period in seconds for customer database sessions (default: 300.0)")
     parser.add_argument("--use-fsm", action="store_true",
                         help="Enable deterministic Table State Machine tracking.")
+    # ── Edge AI backend selection (Phase 14) ─────────────────────────────────
+    parser.add_argument(
+        "--backend", type=str, default="auto",
+        choices=["auto", "cuda", "cpu", "onnx", "axelera"],
+        help="Inference backend: auto (default) | cuda | cpu | onnx | axelera"
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    device = get_device()
-    print(f"Device: {device}")
+    
+    # ── Phase 14: Engine factory — auto-detect or use --backend flag ─────────
+    engine = create_engine(
+        backend=getattr(args, "backend", EDGE_CONFIG["backend"]),
+        project_root=project_root,
+        conf=args.conf,
+    )
+    backend_name = get_device(engine)
+    print(f"Active inference backend: {backend_name}")
+
+    # Warm up the inference engine before the main loop
+    engine.warmup(n_frames=EDGE_CONFIG["axelera_warmup_frames"])
+    
+    # Phase 9: frame scheduling — YOLO every N frames, tracker in between
+    yolo_frame_skip = EDGE_CONFIG["yolo_frame_skip"]
+    _frames_since_yolo = 0  # counter for frame skip logic
 
     # ── Table ROI Management ───────────────────────────────────
     # Use TableManager for dynamic table detection instead of
@@ -172,31 +189,20 @@ def main():
         print(f"Active table ROIs: {table_ids}")
 
     print("Initializing modules...")
-    tracker = PersonTracker(device, conf=args.conf)
+    tracker = PersonTracker(engine, conf=args.conf)
     session_manager = SessionManager(similarity_threshold=0.85, timeout_sec=900)
     occupancy = OccupancyEngine(table_ids, tables)
     fsm_manager = TableFSMManager(table_ids)
-    plate_detector = PlateDetector(device=device)
+    plate_detector = PlateDetector(engine=engine)
     renderer = Renderer(tables)
 
     db = DatabaseManager()
     db.initialize_db()
     init_waiter_db()
     
-    # Initialize MediaPipe models
-    hand_options = vision.HandLandmarkerOptions(
-        base_options=python.BaseOptions(model_asset_path=HAND_MODEL_PATH),
-        running_mode=vision.RunningMode.IMAGE,
-        num_hands=2
-    )
-    mp_hands = vision.HandLandmarker.create_from_options(hand_options)
-
-    pose_options = vision.PoseLandmarkerOptions(
-        base_options=python.BaseOptions(model_asset_path=POSE_MODEL_PATH),
-        running_mode=vision.RunningMode.IMAGE,
-        output_segmentation_masks=False
-    )
-    mp_pose = vision.PoseLandmarker.create_from_options(pose_options)
+    # MediaPipe model initialisation is now handled inside the inference engine.
+    # The engine exposes engine.detect_pose() and engine.detect_hands().
+    # No mp_hands / mp_pose objects needed here.
     
     # State tracking for database
     last_occ_log_time = 0
@@ -270,18 +276,23 @@ def main():
             frame_time = frame_num / fps
             processed_frames_count += 1
 
-            # Periodically clear unused memory to prevent OpenCV/PyTorch OutOfMemoryError
-            if processed_frames_count % 300 == 0:
+            # Phase 9: Frame scheduling — periodically clear unused memory
+            if processed_frames_count % EDGE_CONFIG["gc_interval_frames"] == 0:
                 gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                if engine.is_cuda_available():
+                    try:
+                        import torch as _torch
+                        _torch.cuda.empty_cache()
+                    except Exception:
+                        pass
 
-            if frame_num % 10 == 0:
+            if frame_num % EDGE_CONFIG["perf_sample_interval_frames"] == 0:
                 cpu_usages.append(psutil.cpu_percent())
-                if torch.cuda.is_available():
+                if engine.is_cuda_available():
                     try:
                         res = subprocess.check_output(
-                            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+                            ["nvidia-smi", "--query-gpu=utilization.gpu",
+                             "--format=csv,noheader,nounits"],
                             stderr=subprocess.DEVNULL
                         )
                         gpu_usages.append(float(res.decode("utf-8").strip()))
@@ -367,12 +378,12 @@ def main():
                         table_plate_in_roi[tid] = plate_found
 
                     for person in active_waiters_for_mp:
-                        # ── MediaPipe Optimization 2: subsample to every 6 frames ──
+                        # ── Phase 9: subsample pose to every N frames ──────────────────
                         last_mp_check = getattr(person, 'last_mp_check_frame', -100)
-                        if frame_num - last_mp_check >= 6 or not hasattr(person, 'last_mp_res'):
+                        pose_subsample = EDGE_CONFIG["pose_frame_subsample"]
+                        if frame_num - last_mp_check >= pose_subsample or not hasattr(person, 'last_mp_res'):
                             res = detect_waiter_serving(
-                                frame, person.bbox, tracker.yolo,
-                                mp_hands, mp_pose,
+                                frame, person.bbox, engine,
                                 food_detections=food_detections_frame
                             )
                             person.last_mp_res = res

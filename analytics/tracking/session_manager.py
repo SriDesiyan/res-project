@@ -3,8 +3,12 @@ Session Manager — Global customer identity stitching.
 
 Matches broken YOLO track IDs using OSNet visual Re-ID embeddings
 to create persistent Session IDs.
+
+MIGRATION NOTE (Edge AI):
+    torch is no longer imported.  Embeddings are now numpy float32 arrays
+    (shape 1×D) produced by BaseInferenceEngine.extract_reid_embedding().
+    Cosine similarity is computed via np.dot() — numerically equivalent.
 """
-import torch
 import math
 import cv2
 import numpy as np
@@ -173,15 +177,24 @@ class SessionManager:
                 continue  # This session is already represented by someone on screen
                 
             # Calculate similarity against all embeddings in the session's gallery
+            # Embeddings are numpy float32 arrays (1×D); use np.dot for cosine similarity.
             max_gallery_sim = -1.0
             gallery = data.get("gallery", [])
             if gallery:
                 for g_emb, _ in gallery:
-                    sim_val = torch.mm(emb, g_emb.t()).item()
+                    # Support both numpy (new) and torch tensors (legacy)
+                    if hasattr(g_emb, 'numpy'):
+                        sim_val = float(np.dot(emb.flatten(), g_emb.numpy().flatten()))
+                    else:
+                        sim_val = float(np.dot(emb.flatten(), np.asarray(g_emb).flatten()))
                     if sim_val > max_gallery_sim:
                         max_gallery_sim = sim_val
             elif data["embedding"] is not None:
-                max_gallery_sim = torch.mm(emb, data["embedding"].t()).item()
+                ref = data["embedding"]
+                if hasattr(ref, 'numpy'):
+                    max_gallery_sim = float(np.dot(emb.flatten(), ref.numpy().flatten()))
+                else:
+                    max_gallery_sim = float(np.dot(emb.flatten(), np.asarray(ref).flatten()))
                 
             if max_gallery_sim == -1.0:
                 continue

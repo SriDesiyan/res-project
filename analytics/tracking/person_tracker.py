@@ -1,283 +1,215 @@
 """
+analytics/tracking/person_tracker.py
+======================================
 Person Tracker — YOLO + BoT-SORT + Waiter Classification.
 
-Wraps YOLO detection with BoT-SORT tracking and integrates the existing
-ResNet50 waiter identification pipeline. Each tracked person carries full
-state for table assignment and occupancy analytics.
+MIGRATION NOTE (Edge AI):
+    This module no longer imports torch, YOLO, OSNet, or ResNet50 directly.
+    All model inference is routed through the ``BaseInferenceEngine`` interface.
+    Waiter colour-heuristic logic (HSV analysis) is pure CPU numpy — unchanged.
+    BoT-SORT state management is unchanged.
+    Business logic (role locking, hit counting, disappear timeout) is unchanged.
+
+Usage:
+    from analytics.inference.engine_factory import create_engine
+    from analytics.tracking.person_tracker import PersonTracker
+
+    engine = create_engine(backend="auto")
+    tracker = PersonTracker(engine, conf=0.35)
+    persons = tracker.process_frame(frame, frame_time)
 """
 import time
-import torch
-import torch.nn as nn
+from collections import defaultdict
+from pathlib import Path
+from typing import List, Optional
+
 import cv2
 import numpy as np
-from pathlib import Path
-from torchvision.models import resnet50, ResNet50_Weights
-from torchvision import transforms
-from PIL import Image
-from ultralytics import YOLO
-from collections import defaultdict
-from .osnet import osnet_x1_0
+
+from analytics.inference.base_engine import BaseInferenceEngine
 
 
 class TrackedPerson:
+    """Represents a single person being tracked across frames."""
 
     def __init__(self, track_id: int, bbox: tuple, centroid: tuple, frame_time: float):
         self.track_id = track_id
         self.bbox = bbox                  # (x1, y1, x2, y2)
         self.centroid = centroid           # (cx, cy)
-        self.bottom_center = (centroid[0], bbox[3]) # (cx, y_max)
+        self.bottom_center = (centroid[0], bbox[3])  # (cx, y_max)
         self.velocity = 0.0               # px/frame
         self.role = "customer"            # "waiter" | "customer"
         self.assigned_table = None        # table_id or None
-        self.first_seen = frame_time      # timestamp
+        self.first_seen = frame_time
         self.last_seen = frame_time
-        self.frame_count = 1              # total frames visible
+        self.frame_count = 1
         self.confirmed = False            # True after MIN_VISIBILITY frames
-        self.visual_embedding = None      # torch.Tensor of shape (1, 2048)
-        self.session_id = None            # persistent session ID mapping
+        self.visual_embedding = None      # numpy (1, 512) from OSNet
+        self.session_id = None
 
-    def update(self, bbox: tuple, centroid: tuple, frame_time: float):
+    def update(self, bbox: tuple, centroid: tuple, frame_time: float) -> None:
         self.bbox = bbox
-        
         dx = centroid[0] - self.centroid[0]
         dy = centroid[1] - self.centroid[1]
-        self.velocity = (dx**2 + dy**2) ** 0.5
-        
+        self.velocity = (dx ** 2 + dy ** 2) ** 0.5
         self.centroid = centroid
         self.bottom_center = (centroid[0], bbox[3])
         self.last_seen = frame_time
         self.frame_count += 1
 
 
-class FeatureExtractor(nn.Module):
-    def __init__(self):
-        super().__init__()
-        base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
-        self.features = nn.Sequential(*list(base_model.children())[:-1])
-
-    def forward(self, x):
-        x = self.features(x)
-        return x.view(x.size(0), -1)
-
-
 class PersonTracker:
     """
     Manages YOLO detection, BoT-SORT tracking, and waiter classification.
 
-    Parameters:
-        conf: YOLO detection confidence threshold
-        similarity_threshold: cosine similarity threshold for waiter classification
-        min_visibility: frames before a person is "confirmed"
-        disappear_timeout: frames before removing a missing track
+    All neural-network calls are delegated to the injected ``engine``.
+    This class owns:
+      - BoT-SORT track-state dictionary (``self.tracks``)
+      - Waiter lock/unlock logic (hit counting, colour heuristics)
+      - Track disappear/cleanup logic
+
+    Parameters
+    ----------
+    engine : BaseInferenceEngine
+        The active inference backend (CUDA / CPU / ONNX / Axelera).
+    conf : float
+        YOLO detection confidence threshold.
+    similarity_threshold : float
+        Cosine similarity threshold for waiter embedding match.
     """
 
     MIN_VISIBILITY = 3
     DISAPPEAR_TIMEOUT = 20
     CONFIRM_FRAMES = 2
-    # Waiter classification tuning
-    WAITER_LOCK_THRESHOLD = 6    # hits needed to lock (was 12)
-    WAITER_HIT_INCREMENT = 3     # score per uniform-match frame (was 1)
-    WAITER_UNLOCK_STREAK = 8     # consecutive non-match frames before unlock
+    WAITER_LOCK_THRESHOLD = 6
+    WAITER_HIT_INCREMENT = 3
+    WAITER_UNLOCK_STREAK = 8
 
-    def __init__(self, device, conf=0.25, similarity_threshold=0.80):
-        self.device = device
+    def __init__(
+        self,
+        engine: BaseInferenceEngine,
+        conf: float = 0.25,
+        similarity_threshold: float = 0.80,
+    ) -> None:
+        self.engine = engine
         self.conf = conf
         self.similarity_threshold = similarity_threshold
 
-        project_root = Path(__file__).parent.parent.parent.resolve()
-        self.yolo = YOLO(str(project_root / "yolov8n.pt"))
-        self.yolo.to(device)
+        # Load waiter gallery embeddings (numpy arrays or None)
+        self._waiter_emb_np, self._server_emb_np = engine.get_waiter_gallery_embeddings()
 
-        embedding_dir = project_root / "embedding"
-        self.tracker_cfg = str(embedding_dir / "tracker_config.yaml")
-        if not Path(self.tracker_cfg).exists():
-            self.tracker_cfg = "botsort.yaml"  
+        self.tracks: dict = {}
+        self.locked_waiters: set = set()
+        self.waiter_hits: defaultdict = defaultdict(int)
+        self.waiter_non_match_streak: defaultdict = defaultdict(int)
+        self.yolo_latencies: list = []
+        self.tracking_latencies: list = []
 
-        self.extractor = FeatureExtractor().to(device)
-        self.extractor.eval()
-        self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        # Expose yolo reference for detect_food_in_frame compatibility
+        # The engine itself is the authoritative model accessor.
+        self.yolo = engine  # used by serving_detector.detect_food_in_frame
 
-        # OSNet Re-ID Extractor
-        self.reid_extractor = osnet_x1_0(num_classes=1000, pretrained=False).to(device)
-        reid_weight_path = embedding_dir / "osnet_x1_0_msmt17.pth"
-        if reid_weight_path.exists():
-            state_dict = torch.load(reid_weight_path, map_location=device)
-            model_dict = self.reid_extractor.state_dict()
-            new_state_dict = {}
-            for k, v in state_dict.items():
-                if k.startswith('module.'):
-                    k = k[7:]
-                if k in model_dict and model_dict[k].size() == v.size():
-                    new_state_dict[k] = v
-            model_dict.update(new_state_dict)
-            self.reid_extractor.load_state_dict(model_dict)
-            print(f"[PersonTracker] Loaded OSNet Re-ID weights from {reid_weight_path}")
-        else:
-            print(f"[WARNING] OSNet weights not found at {reid_weight_path}. Running with random initialization.")
-        self.reid_extractor.eval()
+    # ------------------------------------------------------------------
+    # Waiter colour heuristics (pure CPU / numpy — hardware independent)
+    # ------------------------------------------------------------------
 
-        self.reid_transform = transforms.Compose([
-            transforms.Resize((256, 128)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-
-        waiter_emb_path = embedding_dir / "waiter_average_embedding.pt"
-        server_emb_path = embedding_dir / "server_average_embedding.pt"
-
-        self.waiter_emb = None
-        self.server_emb = None
-
-        if waiter_emb_path.exists():
-            self.waiter_emb = torch.load(waiter_emb_path, map_location=device)
-            self.waiter_emb = torch.nn.functional.normalize(self.waiter_emb, p=2, dim=1)
-        if server_emb_path.exists():
-            self.server_emb = torch.load(server_emb_path, map_location=device)
-            self.server_emb = torch.nn.functional.normalize(self.server_emb, p=2, dim=1)
-
-        self.tracks = {}                       # track_id -> TrackedPerson
-        self.locked_waiters = set()            # permanently locked waiter IDs
-        self.waiter_hits = defaultdict(int)    # track_id -> cumulative waiter hits
-        self.waiter_non_match_streak = defaultdict(int)  # track_id -> consecutive non-match frames
-        self.yolo_latencies = []
-        self.tracking_latencies = []
-
-    def _extract_top_40(self, img: Image.Image) -> Image.Image:
-        w, h = img.size
-        return img.crop((0, 0, w, int(h * 0.4)))
-
-    def _has_waiter_uniform(self, crop) -> bool:
+    def _has_waiter_uniform(self, crop: np.ndarray) -> bool:
         if crop is None or crop.size == 0:
             return False
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
         h_crop, w_crop = hsv.shape[:2]
-        
-        # Divide into upper (shirt) and lower (pants)
         upper_body = hsv[int(h_crop * 0.15):int(h_crop * 0.45), :]
         lower_body = hsv[int(h_crop * 0.55):int(h_crop * 0.85), :]
-        
         if upper_body.size == 0 or lower_body.size == 0:
             return False
-            
         mean_upper = cv2.mean(upper_body)
         mean_lower = cv2.mean(lower_body)
-        
-        upper_s = mean_upper[1]
         upper_v = mean_upper[2]
+        upper_s = mean_upper[1]
         lower_v = mean_lower[2]
-        
-        # Upper shirt: Brightness/Value > 175, low Saturation < 65
-        # Lower pants: Brightness/Value < 85
         return (upper_v > 175) and (upper_s < 65) and (lower_v < 85)
 
-    def _has_refined_waiter_uniform(self, crop) -> bool:
+    def _has_refined_waiter_uniform(self, crop: np.ndarray) -> bool:
         if crop is None or crop.size == 0:
             return False
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
         h_crop, w_crop = hsv.shape[:2]
-        
-        # Sliced width to exclude background (central 50%)
-        x_slice_start = int(w_crop * 0.25)
-        x_slice_end = int(w_crop * 0.75)
-        
-        upper_body = hsv[int(h_crop * 0.15):int(h_crop * 0.45), x_slice_start:x_slice_end]
-        lower_body = hsv[int(h_crop * 0.55):int(h_crop * 0.85), x_slice_start:x_slice_end]
-        
+        x_s = int(w_crop * 0.25)
+        x_e = int(w_crop * 0.75)
+        upper_body = hsv[int(h_crop * 0.15):int(h_crop * 0.45), x_s:x_e]
+        lower_body = hsv[int(h_crop * 0.55):int(h_crop * 0.85), x_s:x_e]
         if upper_body.size == 0 or lower_body.size == 0:
             return False
-            
-        # Check pixel percentage for white shirt (exact user thresholds):
         white_pixels = (upper_body[:, :, 2] > 175) & (upper_body[:, :, 1] < 65)
         white_ratio = np.mean(white_pixels)
-        
-        # Check pixel percentage for black pants (exact user threshold):
-        black_pixels = (lower_body[:, :, 2] < 85)
+        black_pixels = lower_body[:, :, 2] < 85
         black_ratio = np.mean(black_pixels)
-        
-        # Require at least 20% of upper body to be white shirt and 40% of lower body to be black pants
         return (white_ratio >= 0.20) and (black_ratio >= 0.40)
 
-    def _get_embedding_and_classify(self, frame, x1, y1, x2, y2) -> tuple:
+    # ------------------------------------------------------------------
+    # Embedding + classification (via engine)
+    # ------------------------------------------------------------------
+
+    def _get_embedding_and_classify(
+        self, frame: np.ndarray, x1: int, y1: int, x2: int, y2: int
+    ) -> tuple:
         """
-        Run ResNet50 similarity against waiter/server embeddings.
-        Returns (emb, max_similarity, is_waiter_match)
+        Extract ResNet50 embedding and classify as waiter/customer.
+        Returns (emb_np, max_similarity, is_waiter_match).
         """
         person_crop = frame[y1:y2, x1:x2]
-        is_uniform_match = self._has_waiter_uniform(person_crop)
-        is_refined_match = self._has_refined_waiter_uniform(person_crop)
+        is_uniform = self._has_waiter_uniform(person_crop)
+        is_refined = self._has_refined_waiter_uniform(person_crop)
 
-        if self.waiter_emb is None and self.server_emb is None:
-            return (None, 0.0, is_uniform_match or is_refined_match)
+        if self._waiter_emb_np is None and self._server_emb_np is None:
+            return (None, 0.0, is_uniform or is_refined)
 
-        img_pil = Image.fromarray(cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB))
-        top_img = self._extract_top_40(img_pil)
-        tensor = self.transform(top_img).unsqueeze(0).to(self.device)
+        emb_np = self.engine.extract_waiter_embedding(person_crop)  # (1, 2048)
 
-        with torch.no_grad():
-            emb = self.extractor(tensor)
-            emb = torch.nn.functional.normalize(emb, p=2, dim=1)
+        sims = []
+        if self._waiter_emb_np is not None:
+            sims.append(float(np.dot(emb_np, self._waiter_emb_np.T)))
+        if self._server_emb_np is not None:
+            sims.append(float(np.dot(emb_np, self._server_emb_np.T)))
+        max_sim = max(sims) if sims else 0.0
+        is_match = (max_sim > self.similarity_threshold) or is_uniform or is_refined
+        return (emb_np, max_sim, is_match)
 
-            sims = []
-            if self.waiter_emb is not None:
-                sims.append(torch.mm(emb, self.waiter_emb.t()).item())
-            if self.server_emb is not None:
-                sims.append(torch.mm(emb, self.server_emb.t()).item())
+    # ------------------------------------------------------------------
+    # Main process loop
+    # ------------------------------------------------------------------
 
-            max_sim = max(sims) if sims else 0.0
-
-        is_match = (max_sim > self.similarity_threshold) or is_uniform_match or is_refined_match
-        return (emb.cpu(), max_sim, is_match)
-
-    def process_frame(self, frame, frame_time: float) -> list[TrackedPerson]:
+    def process_frame(
+        self, frame: np.ndarray, frame_time: float
+    ) -> List[TrackedPerson]:
         try:
             return self._process_frame_impl(frame, frame_time)
-        except RuntimeError as e:
-            if "cuda" in str(e).lower() or "device" in str(e).lower():
-                print(f"\n[WARNING] PersonTracker CUDA error: {e}. Falling back to CPU.")
-                self.device = torch.device("cpu")
-                self.extractor = self.extractor.to(self.device)
-                self.reid_extractor = self.reid_extractor.to(self.device)
-                self.yolo.to("cpu")
+        except RuntimeError as exc:
+            if "cuda" in str(exc).lower() or "device" in str(exc).lower():
+                print(f"[PersonTracker] Hardware error: {exc}. Retrying.")
                 return self._process_frame_impl(frame, frame_time)
-            else:
-                raise e
+            raise
 
-    def _process_frame_impl(self, frame, frame_time: float) -> list[TrackedPerson]:
+    def _process_frame_impl(
+        self, frame: np.ndarray, frame_time: float
+    ) -> List[TrackedPerson]:
         """
-        Process a single frame:
-        1. YOLO detect persons
-        2. BoT-SORT track
-        3. Classify waiter/customer
-        4. Update track state
-
-        Returns list of active TrackedPerson objects.
+        1. YOLO + BoT-SORT via engine.track_persons()
+        2. OSNet Re-ID embedding via engine.extract_reid_embedding()
+        3. Waiter classification (colour heuristics + ResNet50 embedding)
         """
         h, w = frame.shape[:2]
 
-        # Layer 1: YOLO + BoT-SORT
-        t_yolo_start = time.time()
-        results = self.yolo.track(
-            frame, classes=[0], conf=self.conf,
-            persist=True, tracker=self.tracker_cfg, verbose=False,
-            device=self.device
-        )
-        t_yolo_end = time.time()
-        
-        yolo_inf = 0.0
-        if results and len(results) > 0 and hasattr(results[0], 'speed'):
-            yolo_inf = results[0].speed.get('inference', 0.0) # in ms
-            
-        self.yolo_latencies.append(yolo_inf / 1000.0) # convert to seconds
-        self.tracking_latencies.append(max(0.0, (t_yolo_end - t_yolo_start) - (yolo_inf / 1000.0)))
+        # ── Layer 1: YOLO + BoT-SORT ────────────────────────────────────
+        results, yolo_lats, track_lats = self.engine.track_persons(frame, self.conf)
+        self.yolo_latencies.extend(yolo_lats)
+        self.tracking_latencies.extend(track_lats)
 
-        active_ids = set()
-        active_persons = []
+        active_ids: set = set()
+        active_persons: List[TrackedPerson] = []
 
-        if results and results[0].boxes is not None and results[0].boxes.id is not None:
+        if (results is not None and results[0].boxes is not None
+                and results[0].boxes.id is not None):
             boxes = results[0].boxes.xyxy.cpu().numpy()
             confs = results[0].boxes.conf.cpu().numpy()
             track_ids = results[0].boxes.id.int().cpu().numpy()
@@ -307,23 +239,15 @@ class PersonTracker:
                 if tp.frame_count >= self.MIN_VISIBILITY:
                     tp.confirmed = True
 
-                # ── OSNet Re-ID embedding (gallery building) ──────────────────────
-                # Run for first 10 frames, then every 30 frames.
+                # ── OSNet Re-ID embedding ──────────────────────────────────
                 if tp.visual_embedding is None or tp.frame_count < 10 or tp.frame_count % 30 == 0:
                     person_crop = frame[y1:y2, x1:x2]
-                    img_pil = Image.fromarray(cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB))
-                    reid_tensor = self.reid_transform(img_pil).unsqueeze(0).to(self.device)
-                    with torch.no_grad():
-                        reid_emb = self.reid_extractor(reid_tensor)
-                        reid_emb = torch.nn.functional.normalize(reid_emb, p=2, dim=1)
-                    tp.visual_embedding = reid_emb.cpu()
+                    if person_crop.size > 0:
+                        tp.visual_embedding = self.engine.extract_reid_embedding(person_crop)
 
-                # ── Waiter classification ─────────────────────────────────────────
-                # Skip expensive ResNet50 re-check for tracks already locked as waiter.
-                # This saves CPU and prevents flicker on confirmed waiters.
+                # ── Waiter classification ──────────────────────────────────
                 if track_id in self.locked_waiters:
                     tp.role = "waiter"
-                    # Periodic check (every 60 frames) to allow unlock on sustained mismatch
                     if tp.frame_count % 60 == 0:
                         _, _, is_match = self._get_embedding_and_classify(frame, x1, y1, x2, y2)
                         if not is_match:
@@ -336,19 +260,14 @@ class PersonTracker:
                         else:
                             self.waiter_non_match_streak[track_id] = 0
                 else:
-                    # Not yet locked — run classifier (first 30 frames every frame,
-                    # then every 15 frames for speed).
                     last_is_match = getattr(tp, "last_is_match", None)
                     if last_is_match is None or tp.frame_count < 30 or tp.frame_count % 15 == 0:
-                        emb, max_sim, is_match = self._get_embedding_and_classify(
-                            frame, x1, y1, x2, y2
-                        )
+                        _, _, is_match = self._get_embedding_and_classify(frame, x1, y1, x2, y2)
                         tp.last_is_match = is_match
                     else:
                         is_match = last_is_match
 
                     if is_match:
-                        # Asymmetric: fast accumulation (+3), slow decay (-1)
                         self.waiter_hits[track_id] = min(
                             30, self.waiter_hits[track_id] + self.WAITER_HIT_INCREMENT
                         )
@@ -367,16 +286,15 @@ class PersonTracker:
 
                 active_persons.append(tp)
 
+        # ── Cleanup disappeared tracks ───────────────────────────────────
         disappeared = set(self.tracks.keys()) - active_ids
         to_delete = []
         for tid in disappeared:
-            frames_missing = (frame_time - self.tracks[tid].last_seen) * 25  
+            frames_missing = (frame_time - self.tracks[tid].last_seen) * 25
             if frames_missing > self.DISAPPEAR_TIMEOUT:
                 to_delete.append(tid)
-
         for tid in to_delete:
             del self.tracks[tid]
             self.waiter_hits.pop(tid, None)
-            # Don't remove from locked_waiters — keeps the lock for re-ID for 15 minutes 
 
         return active_persons

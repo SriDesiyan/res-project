@@ -1,25 +1,16 @@
 {
     "total_customers": 2,
-    "total_waiters": 4,
+    "total_waiters": 2,
     "occupied_tables_count": 1,
-    "average_occupancy_duration_seconds": 350.64,
-    "order_taking_events_count": 1,
+    "average_occupancy_duration_seconds": 19.97,
+    "order_taking_events_count": 0,
     "food_serving_events_count": 0,
     "average_waiter_response_time_seconds": 10.11,
-    "average_dirty_table_duration_seconds": 10.56,
-    "dirty_table_durations_by_table": {
-        "table_2": 10.56
-    },
-    "average_cleaning_duration_seconds": 0.72,
+    "average_dirty_table_duration_seconds": 0.0,
+    "dirty_table_durations_by_table": {},
+    "average_cleaning_duration_seconds": 0.0,
     "peak_occupancy_periods": [
         "63.2s - 66.2s (Peak: 2 customers)",
-        "72.2s - 78.2s (Peak: 2 customers)",
-        "90.2s - 90.2s (Peak: 2 customers)",
-        "114.3s - 114.3s (Peak: 2 customers)",
-        "123.3s - 123.3s (Peak: 2 customers)",
-        "129.3s - 129.3s (Peak: 2 customers)",
-        "135.3s - 135.3s (Peak: 2 customers)",
-        "766.9s - 775.9s (Peak: 2 customers)",
-        "782.0s - 782.0s (Peak: 2 customers)"
+        "72.2s - 78.2s (Peak: 2 customers)"
     ]
 }

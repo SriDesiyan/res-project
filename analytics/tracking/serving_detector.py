@@ -1,72 +1,116 @@
+"""
+analytics/tracking/serving_detector.py
+========================================
+Multi-method waiter serving / order-taking detector.
+
+MIGRATION NOTE (Edge AI):
+    This module no longer imports mediapipe directly.
+    Pose and hand landmark detection are routed through the
+    ``BaseInferenceEngine`` interface (engine.detect_pose / engine.detect_hands).
+    All confidence scoring logic (methods 1-4) is UNCHANGED.
+    All threshold values are UNCHANGED.
+
+The engine is passed in at call time — no global model objects.
+This preserves the ability to call detect_waiter_serving() without
+knowing or caring which hardware backend is active.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-from pathlib import Path
 
-# Paths to models
+# Kept for backward-compat path references (MediaPipe .task files on disk).
 project_root = Path(__file__).parent.parent.parent.resolve()
 HAND_MODEL_PATH = str(project_root / "embedding" / "hand_landmarker.task")
 POSE_MODEL_PATH = str(project_root / "embedding" / "pose_landmarker.task")
 
+# COCO food class IDs (unchanged from original)
+_FOOD_CLASSES = [39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
 
-def detect_food_in_frame(frame, yolo_model):
+
+def detect_food_in_frame(frame: np.ndarray, engine_or_yolo) -> List[Dict[str, Any]]:
     """
-    Detect plates, bowls, cups, and food items in the frame using COCO pre-trained YOLOv8.
+    Detect plates, bowls, cups, and food items using the inference engine.
+
+    ``engine_or_yolo`` accepts either:
+      - A ``BaseInferenceEngine`` instance (new path)
+      - The original Ultralytics YOLO object (legacy path — backward compat)
+
+    Returns a list of dicts: {class, bbox, confidence}
     """
-    # COCO classes for food and dining accessories:
-    # 39: bottle, 40: wine glass, 41: cup, 42: fork, 43: knife, 44: spoon, 45: bowl
-    # 46-55: various food classes (banana, apple, sandwich, orange, broccoli, carrot, hot dog, pizza, donut, cake)
-    food_classes = [39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+    # New path: engine exposes detect_food()
+    if hasattr(engine_or_yolo, "detect_food"):
+        return engine_or_yolo.detect_food(frame, food_classes=_FOOD_CLASSES, conf=0.20)
 
-    results = yolo_model(frame, classes=food_classes, conf=0.20, verbose=False)
-
+    # Legacy path: raw Ultralytics YOLO (kept for backward compat during transition)
+    results = engine_or_yolo(frame, classes=_FOOD_CLASSES, conf=0.20, verbose=False)
     food_detections = []
     if results and results[0].boxes is not None:
         boxes = results[0].boxes.xyxy.cpu().numpy()
         classes = results[0].boxes.cls.int().cpu().numpy()
         confs = results[0].boxes.conf.cpu().numpy()
-
         for bbox, class_id, conf in zip(boxes, classes, confs):
-            class_name = yolo_model.names[class_id]
             food_detections.append({
-                'class': class_name,
-                'bbox': bbox,  # [x1, y1, x2, y2]
-                'confidence': conf
+                "class": engine_or_yolo.names[class_id],
+                "bbox": bbox,
+                "confidence": conf,
             })
     return food_detections
 
 
-def detect_waiter_serving(frame, waiter_bbox, yolo_model, hands_detector,
-                          pose_detector, food_detections=None):
+def detect_waiter_serving(
+    frame: np.ndarray,
+    waiter_bbox: tuple,
+    engine_or_yolo,
+    hands_detector=None,
+    pose_detector=None,
+    food_detections: Optional[List[Dict]] = None,
+) -> Dict[str, Any]:
     """
     Multi-method crop-based hybrid detection for food serving.
 
-    Confidence scoring:
-      - method1  (+0.40): YOLO food detection inside/near the waiter bounding box.
-      - method2  (+0.50): Hand landmark within 60px of a YOLO food detection
-                          (strongest single indicator — hand touching food).
-      - method3  (+0.15): Pose indicates one wrist above elbow+shoulder threshold
-                          AND food was detected in method1 (pose alone is insufficient).
-      - method4  (+0.35): White/dark object near wrist AND a YOLO food detection
-                          exists somewhere in the frame (colour alone insufficient).
+    Parameters
+    ----------
+    frame : np.ndarray
+        Full BGR video frame.
+    waiter_bbox : tuple
+        (x1, y1, x2, y2) bounding box of the waiter.
+    engine_or_yolo : BaseInferenceEngine | YOLO
+        Inference engine (new path) or raw YOLO object (legacy path).
+    hands_detector : optional
+        Legacy MediaPipe HandLandmarker object.  Ignored when engine_or_yolo
+        is a BaseInferenceEngine (engine.detect_hands() is used instead).
+    pose_detector : optional
+        Legacy MediaPipe PoseLandmarker object.  Same as above.
+    food_detections : list | None
+        Pre-computed food detections for this frame (avoids double inference).
 
-    Serving is confirmed when total confidence >= 0.60.
+    Confidence scoring (UNCHANGED from original):
+      method1 (+0.40): YOLO food detection inside/near waiter bounding box.
+      method2 (+0.50): Hand landmark within 60px of a YOLO food detection.
+      method3 (+0.15): Pose — one wrist above shoulder/elbow threshold AND
+                       food detected in method1.
+      method4 (+0.35): White/dark object near wrist AND YOLO food exists.
 
-    NOTE: The black-plate unconditional override has been removed.
-    NOTE: Pose (arm-raise) alone can no longer trigger is_serving.
-    NOTE: Colour-near-wrist alone can no longer trigger is_serving.
+    Serving confirmed when total confidence >= 0.50.
     """
+    # ── Determine how to get food detections ────────────────────────────────
     if food_detections is None:
-        food_detections = detect_food_in_frame(frame, yolo_model)
+        food_detections = detect_food_in_frame(frame, engine_or_yolo)
+
+    # ── Determine how to get landmarks ──────────────────────────────────────
+    # New path: engine exposes detect_pose/detect_hands
+    use_engine = hasattr(engine_or_yolo, "detect_pose")
 
     waiter_x1, waiter_y1, waiter_x2, waiter_y2 = waiter_bbox
 
-    # ── Method 1: YOLO food inside / near waiter bounding box ─────────
+    # ── Method 1: YOLO food inside / near waiter bounding box ───────────────
     waiter_food_detections = []
     for food in food_detections:
-        fx1, fy1, fx2, fy2 = food['bbox']
+        fx1, fy1, fx2, fy2 = food["bbox"]
         waiter_mid_y = waiter_y1 + (waiter_y2 - waiter_y1) * 0.5
         x_overlap = (waiter_x1 - 30 <= fx1 <= waiter_x2 + 30
                      or waiter_x1 - 30 <= fx2 <= waiter_x2 + 30)
@@ -75,14 +119,15 @@ def detect_waiter_serving(frame, waiter_bbox, yolo_model, hands_detector,
             waiter_food_detections.append(food)
 
     method1_serving = len(waiter_food_detections) > 0
-    method1_food_type = waiter_food_detections[0]['class'] if method1_serving else None
+    method1_food_type = waiter_food_detections[0]["class"] if method1_serving else None
 
-    # ── Crop waiter bounding box (20px padding) to isolate from neighbours ──
+    # ── Crop waiter region ───────────────────────────────────────────────────
     h, w = frame.shape[:2]
     pad = 20
-    px1, py1 = max(0, waiter_x1 - pad), max(0, waiter_y1 - pad)
-    px2, py2 = min(w, waiter_x2 + pad), min(h, waiter_y2 + pad)
-
+    px1 = max(0, waiter_x1 - pad)
+    py1 = max(0, waiter_y1 - pad)
+    px2 = min(w, waiter_x2 + pad)
+    py2 = min(h, waiter_y2 + pad)
     waiter_crop = frame[py1:py2, px1:px2]
     crop_h, crop_w = waiter_crop.shape[:2]
 
@@ -92,100 +137,99 @@ def detect_waiter_serving(frame, waiter_bbox, yolo_model, hands_detector,
     method4_serving = False
     is_order_taking = False
     serving_hand_pos = None
-    pose_results = None
+    landmarks = []
 
     if crop_h > 20 and crop_w > 20:
-        rgb_crop = cv2.cvtColor(waiter_crop, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_crop)
+        # ── Get pose landmarks ───────────────────────────────────────────────
+        if use_engine:
+            pose_result = engine_or_yolo.detect_pose(waiter_crop)
+            landmarks = pose_result.get("landmarks", [])
+        elif pose_detector is not None:
+            # Legacy MediaPipe path
+            try:
+                import mediapipe as _mp
+                rgb_crop = cv2.cvtColor(waiter_crop, cv2.COLOR_BGR2RGB)
+                mp_img = _mp.Image(image_format=_mp.ImageFormat.SRGB, data=rgb_crop)
+                pose_res = pose_detector.detect(mp_img)
+                if pose_res.pose_landmarks:
+                    lms = pose_res.pose_landmarks[0]
+                    landmarks = [{"x": float(lm.x), "y": float(lm.y),
+                                   "z": float(lm.z),
+                                   "visibility": float(getattr(lm, "visibility", 1.0))}
+                                 for lm in lms]
+            except Exception:
+                landmarks = []
 
-        # ── Run Pose Landmarker on isolated waiter crop ────────────────
-        pose_results = pose_detector.detect(mp_image)
-        if pose_results.pose_landmarks:
-            landmarks = pose_results.pose_landmarks[0]
-            left_shoulder = landmarks[11]
-            right_shoulder = landmarks[12]
-            left_wrist = landmarks[15]
-            right_wrist = landmarks[16]
-            left_elbow = landmarks[13]
-            right_elbow = landmarks[14]
+        # ── Pose analysis (indices: 11=L.shoulder,12=R.shoulder,13=L.elbow,
+        #                           14=R.elbow,15=L.wrist,16=R.wrist) ────────
+        if len(landmarks) > 16:
+            ls = landmarks[11]   # left shoulder
+            rs = landmarks[12]   # right shoulder
+            le = landmarks[13]   # left elbow
+            re = landmarks[14]   # right elbow
+            lw = landmarks[15]   # left wrist
+            rw = landmarks[16]   # right wrist
 
-            # Order-taking detection: both wrists close together
-            if left_wrist.x != 0.0 and right_wrist.x != 0.0:
+            # Order-taking: both wrists close together
+            if lw["x"] != 0.0 and rw["x"] != 0.0:
                 wrist_dist = (
-                    (left_wrist.x - right_wrist.x) ** 2
-                    + (left_wrist.y - right_wrist.y) ** 2
+                    (lw["x"] - rw["x"]) ** 2 + (lw["y"] - rw["y"]) ** 2
                 ) ** 0.5
                 if wrist_dist < 0.35:
                     is_order_taking = True
 
-            # Pose serving check (method3):
-            # Wrist above shoulder OR wrist above elbow when elbow is near shoulder.
+            # Method 3: wrist above shoulder / elbow
             left_serving = (
-                left_wrist.y < left_shoulder.y
-                or (left_wrist.y < left_elbow.y
-                    and left_elbow.y < left_shoulder.y + 0.25)
+                lw["y"] < ls["y"]
+                or (lw["y"] < le["y"] and le["y"] < ls["y"] + 0.25)
             )
             right_serving = (
-                right_wrist.y < right_shoulder.y
-                or (right_wrist.y < right_elbow.y
-                    and right_elbow.y < right_shoulder.y + 0.25)
+                rw["y"] < rs["y"]
+                or (rw["y"] < re["y"] and re["y"] < rs["y"] + 0.25)
             )
             if left_serving or right_serving:
                 method3_serving = True
 
-            # ── Method 4: Colour near wrist ──
-            for wrist in [left_wrist, right_wrist]:
-                wx = int(wrist.x * crop_w)
-                wy = int(wrist.y * crop_h)
-
+            # Method 4: colour near wrist
+            for wrist in [lw, rw]:
+                wx_px = int(wrist["x"] * crop_w)
+                wy_px = int(wrist["y"] * crop_h)
                 r = 45
-                x1_crop = max(0, wx - r)
-                x2_crop = min(crop_w, wx + r)
-                y1_crop = max(0, wy - r)
-                y2_crop = min(crop_h, wy + r)
-
-                if x2_crop - x1_crop >= 10 and y2_crop - y1_crop >= 10:
-                    wrist_crop = waiter_crop[y1_crop:y2_crop, x1_crop:x2_crop]
+                x1c = max(0, wx_px - r)
+                x2c = min(crop_w, wx_px + r)
+                y1c = max(0, wy_px - r)
+                y2c = min(crop_h, wy_px + r)
+                if x2c - x1c >= 10 and y2c - y1c >= 10:
+                    wrist_crop = waiter_crop[y1c:y2c, x1c:x2c]
                     hsv_crop = cv2.cvtColor(wrist_crop, cv2.COLOR_BGR2HSV)
-
-                    # White: Value > 170, Saturation < 60
-                    white_pixels = (
-                        (hsv_crop[:, :, 2] > 170) & (hsv_crop[:, :, 1] < 60)
-                    )
+                    white_pixels = (hsv_crop[:, :, 2] > 170) & (hsv_crop[:, :, 1] < 60)
                     white_ratio = np.mean(white_pixels)
-
-                    # Dark (including black plates): Value < 60
-                    dark_pixels = (hsv_crop[:, :, 2] < 60)
+                    dark_pixels = hsv_crop[:, :, 2] < 60
                     dark_ratio = np.mean(dark_pixels)
-
                     if white_ratio > 0.18 or dark_ratio > 0.18:
                         method4_serving = True
-                        serving_hand_pos = (px1 + wx, py1 + wy)
+                        serving_hand_pos = (px1 + wx_px, py1 + wy_px)
                         break
 
-            # ── Method 2: Hand landmark proximity to YOLO food ─────────
-            for wrist in [left_wrist, right_wrist]:
-                wrist_frame_x = px1 + int(wrist.x * crop_w)
-                wrist_frame_y = py1 + int(wrist.y * crop_h)
-
+            # Method 2: hand landmark proximity to YOLO food
+            for wrist in [lw, rw]:
+                wfx = px1 + int(wrist["x"] * crop_w)
+                wfy = py1 + int(wrist["y"] * crop_h)
                 for food in food_detections:
-                    fx1, fy1, fx2, fy2 = food['bbox']
-                    fcx = (fx1 + fx2) / 2.0
-                    fcy = (fy1 + fy2) / 2.0
-                    distance = (
-                        (wrist_frame_x - fcx) ** 2
-                        + (wrist_frame_y - fcy) ** 2
-                    ) ** 0.5
-                    if distance < 60:
+                    fx1f, fy1f, fx2f, fy2f = food["bbox"]
+                    fcx = (fx1f + fx2f) / 2.0
+                    fcy = (fy1f + fy2f) / 2.0
+                    dist = ((wfx - fcx) ** 2 + (wfy - fcy) ** 2) ** 0.5
+                    if dist < 60:
                         method2_serving = True
-                        method2_food = food['class']
+                        method2_food = food["class"]
                         if serving_hand_pos is None:
-                            serving_hand_pos = (wrist_frame_x, wrist_frame_y)
+                            serving_hand_pos = (wfx, wfy)
                         break
                 if method2_serving:
                     break
 
-    # ── Confidence aggregation ─────────────────────────────────────────
+    # ── Confidence aggregation (UNCHANGED) ──────────────────────────────────
     confidence = 0.0
     if method1_serving:
         confidence += 0.40
@@ -196,23 +240,20 @@ def detect_waiter_serving(frame, waiter_bbox, yolo_model, hands_detector,
     if method3_serving:
         confidence += 0.15
 
-    # Order-taking suppresses serving UNLESS hand-to-food proximity was detected
-    # (a waiter carrying a plate with both hands has close wrists but IS serving).
     is_serving = confidence >= 0.50
     if is_order_taking and not method2_serving:
         is_serving = False
 
-    # Fallback serving hand position
+    # Fallback hand position
     if serving_hand_pos is None and (method3_serving or method2_serving) \
-            and crop_h > 20 and crop_w > 20:
-        if pose_results and pose_results.pose_landmarks:
-            lw = pose_results.pose_landmarks[0][15]
-            rw = pose_results.pose_landmarks[0][16]
-            chosen = lw if lw.y > rw.y else rw
-            serving_hand_pos = (
-                px1 + int(chosen.x * crop_w),
-                py1 + int(chosen.y * crop_h)
-            )
+            and crop_h > 20 and len(landmarks) > 16:
+        lw = landmarks[15]
+        rw = landmarks[16]
+        chosen = lw if lw["y"] > rw["y"] else rw
+        serving_hand_pos = (
+            px1 + int(chosen["x"] * crop_w),
+            py1 + int(chosen["y"] * crop_h),
+        )
 
     food_type = (
         method2_food
@@ -221,15 +262,15 @@ def detect_waiter_serving(frame, waiter_bbox, yolo_model, hands_detector,
     )
 
     return {
-        'is_serving': is_serving,
-        'is_order_taking': is_order_taking,
-        'confidence': confidence,
-        'serving_hand_pos': serving_hand_pos,
-        'food_type': food_type,
-        'methods': {
-            'food_detection': method1_serving,
-            'hand_detection': method2_serving,
-            'pose_detection': method3_serving,
-            'colour_near_wrist': method4_serving,
-        }
+        "is_serving": is_serving,
+        "is_order_taking": is_order_taking,
+        "confidence": confidence,
+        "serving_hand_pos": serving_hand_pos,
+        "food_type": food_type,
+        "methods": {
+            "food_detection": method1_serving,
+            "hand_detection": method2_serving,
+            "pose_detection": method3_serving,
+            "colour_near_wrist": method4_serving,
+        },
     }
